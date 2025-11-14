@@ -221,4 +221,4 @@ df_all = pd.concat([df_exhibitions, df_info], ignore_index=True)
 
 df_all.to_csv("tfam_exhibitions.csv", index=False, encoding="utf-8-sig")
 
-print("已輸出 tfam_exhibitions.csv")
+print(f"已輸出 tfam_exhibitions.csv")
