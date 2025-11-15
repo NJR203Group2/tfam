@@ -1,107 +1,64 @@
-# ===在 bot.py 裡「載入 CSV」===
-# bot.py
-import csv
 import os
-
-# 取得專案目錄
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CSV_PATH = os.path.join(BASE_DIR, "tfam_exhibitions.csv")
-
-# 啟動時讀一次 CSV 到記憶體
-def load_exhibitions():
-    rows = []
-    with open(CSV_PATH, newline='', encoding='utf-8-sig') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            rows.append(row)
-    return rows
-
-EXHIBITIONS = load_exhibitions()
-
-
-# ===讓Bot 可以用關鍵字查展覽，例如查「美術館」、「兒童」之類。===
-def search_exhibitions(keyword: str, limit: int = 5):
-    keyword = keyword.strip()
-    if not keyword:
-        return []
-
-    result = []
-    for row in EXHIBITIONS:
-        name = row.get("展覽名稱", "")
-        desc = row.get("展區說明", "")
-        addr = row.get("地址", "")
-        if (keyword in name) or (keyword in desc) or (keyword in addr):
-            result.append(row)
-        if len(result) >= limit:
-            break
-    return result
-
-
-def format_exhibitions_message(records):
-    if not records:
-        return "找不到符合的展覽，可以試試其他關鍵字～"
-
-    lines = []
-    for r in records:
-        line = (
-            f"《{r.get('展覽名稱', '未命名展覽')}》\n"
-            f"📍 地址：{r.get('地址', '無資料')}\n"
-            f"⏰ 開放時間：{r.get('開放時間', '無資料')}\n"
-            f"📝 展區說明：{r.get('展區說明', '無資料')}\n"
-            "－－－－－－"
-        )
-        lines.append(line)
-
-    return "\n".join(lines)
-
-
-# ===接到 Line Bot 的文字訊息事件===
 from flask import Flask, request, abort
+
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
-import os
 
+# 建立 Flask app
 app = Flask(__name__)
 
-# 建議用環境變數存，以後部署比較安全
-CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "你的access token")
-CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET", "你的secret")
+# 從環境變數讀取 LINE 憑證
+CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
+CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET")
+
+if CHANNEL_ACCESS_TOKEN is None or CHANNEL_SECRET is None:
+    raise ValueError("須在環境變數中設定 LINE_CHANNEL_ACCESS_TOKEN 與 LINE_CHANNEL_SECRET")
 
 line_bot_api = LineBotApi(CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(CHANNEL_SECRET)
 
 
+@app.route("/", methods=['GET'])
+def index():
+    return "TFAM bot is running."
+
+
+# LINE Webhook 入口
 @app.route("/callback", methods=['POST'])
 def callback():
-    signature = request.headers['X-Line-Signature']
-    body = request.get_data(as_text=True)
+    # 1. 取得簽章
+    signature = request.headers.get('X-Line-Signature', '')
 
+    # 2. 取得 body
+    body = request.get_data(as_text=True)
+    app.logger.info("Request body: " + body)
+
+    # 3. 驗證簽章並處理事件
     try:
         handler.handle(body, signature)
     except InvalidSignatureError:
+        app.logger.warning("Invalid signature. Please check channel secret / access token.")
+        # 開發階段你也可以暫時回 200，讓 Verify 通過：
+        # return "OK"
         abort(400)
 
-    return 'OK'
+    # 4. 一切正常回 200
+    return "OK"
 
 
+# 收到文字訊息時，回 Echo（同樣的文字）
 @handler.add(MessageEvent, message=TextMessage)
-def handle_message(event: MessageEvent):
+def handle_text_message(event: MessageEvent):
     user_text = event.message.text
-
-    # Step 1: 用使用者訊息當關鍵字查 CSV
-    records = search_exhibitions(user_text)
-
-    # Step 2: 把查到的資料格式化成文字
-    reply_text = format_exhibitions_message(records)
-
-    # Step 3: 回覆給使用者
+    reply = f"你說：{user_text}"
     line_bot_api.reply_message(
         event.reply_token,
-        TextSendMessage(text=reply_text)
+        TextSendMessage(text=reply)
     )
 
 
 if __name__ == "__main__":
-    # 本機測試用
-    app.run(host="0.0.0.0", port=8000)
+    # 本機測試用，Railway 上會用 gunicorn 啟動
+    port = int(os.environ.get("PORT", 8000))
+    app.run(host="0.0.0.0", port=port)
