@@ -48,7 +48,7 @@ htmlcov/
 *.jpeg
 *.gif
 *.svg
-*.csv
+#*.csv
 *.tsv
 *.xlsx
 *.xls
