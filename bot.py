@@ -25,7 +25,7 @@ line_bot_api = LineBotApi(CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(CHANNEL_SECRET)
 
 # -----------------------
-# CSV 讀取
+# CSV 讀取設定
 # -----------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CSV_PATH = os.path.join(BASE_DIR, "tfam_exhibitions.csv")
@@ -33,7 +33,6 @@ CSV_PATH = os.path.join(BASE_DIR, "tfam_exhibitions.csv")
 def load_exhibitions():
     rows = []
     if not os.path.exists(CSV_PATH):
-        # 若沒找到檔案，避免整個程式掛掉，先回傳空 list
         app.logger.warning(f"CSV 檔案不存在：{CSV_PATH}")
         return rows
 
@@ -47,7 +46,6 @@ def load_exhibitions():
 EXHIBITIONS = load_exhibitions()
 
 def search_exhibitions(keyword: str, limit: int = 5):
-    """用關鍵字在 CSV 裡找展覽"""
     if not keyword or not EXHIBITIONS:
         return []
 
@@ -67,15 +65,16 @@ def search_exhibitions(keyword: str, limit: int = 5):
     return result
 
 def format_exhibitions_message(records):
-    """把查到的展覽組成文字訊息"""
     if not records:
-        return "找不到符合的展覽，可以試試其他關鍵字～"
+        return "找不到符合的展覽，可以試試其他關鍵字（例如：北美館、當代、兒童）～"
 
     lines = []
     for r in records:
         line = (
             f"《{r.get('展覽名稱', '未命名展覽')}》\n"
             f"📍 地址：{r.get('地址', '無資料')}\n"
+            f"☎ 電話：{r.get('電話', '無資料')}\n"
+            f"📧 Email：{r.get('電子郵件', '無資料')}\n"
             f"⏰ 開放時間：{r.get('開放時間', '無資料')}\n"
             f"📝 展區說明：{r.get('展區說明', '無資料')}\n"
             "-------------------------"
@@ -112,14 +111,8 @@ def callback():
 @handler.add(MessageEvent, message=TextMessage)
 def handle_text_message(event: MessageEvent):
     user_text = event.message.text.strip()
-
-    # 1) 如果使用者打「echo xxx」就原文回覆
-    if user_text.lower().startswith("echo "):
-        reply_text = "你說：" + user_text[5:]
-    else:
-        # 2) 否則當作關鍵字查 CSV
-        records = search_exhibitions(user_text)
-        reply_text = format_exhibitions_message(records)
+    records = search_exhibitions(user_text)
+    reply_text = format_exhibitions_message(records)
 
     line_bot_api.reply_message(
         event.reply_token,
